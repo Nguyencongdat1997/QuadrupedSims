@@ -4,7 +4,7 @@ import re
 
 
 class QuadrupedRobot(object):
-    def __init__(self, pybullet_client, init_position, init_orientation, init_joints,
+    def __init__(self, pybullet_client, init_position, init_orientation, init_joints, torque_limits,
                  joint_stiffness=np.array([30.0, 30.0, 30.0] * 4), joint_damping=np.array([0.5, 0.5, 0.5] * 4)):
         self.pybullet_client = pybullet_client
 
@@ -16,6 +16,7 @@ class QuadrupedRobot(object):
                                           1, 1, 1, 1, 1, 1])
         self.joint_stiffness = joint_stiffness
         self.joint_damping = joint_damping
+        self.torque_limits = torque_limits
 
         self.naming_pattern = {'base_link': re.compile(r'\w*floating_base\w*'),
                                'hip_joint': re.compile(r'\w+_hip_joint\w*'),
@@ -68,6 +69,12 @@ class QuadrupedRobot(object):
 
     def load_init_pose(self):
         for i in range(len(self.joint_ids)):
+            self.pybullet_client.setJointMotorControl2(
+                bodyIndex=self.uid,
+                jointIndex=self.joint_ids[i],
+                controlMode=self.pybullet_client.VELOCITY_CONTROL,
+                targetVelocity=0,
+                force=self.torque_limits[i]) # Note: This seem to be required before resetting joint state
             self.pybullet_client.resetJointState(self.uid,
                                                  self.joint_ids[i],
                                                  targetValue=self.init_joints[i],

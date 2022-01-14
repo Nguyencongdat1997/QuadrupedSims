@@ -20,12 +20,12 @@ class Config():
 
         self.a1_urdf = './asset/urdfs/a1_description/urdf/a1.urdf'
         self.init_orientation = (0, 0, 0, 1)
-        self.init_position = (0, 0, 0.385)
+        self.init_position = (0, 0, 0.38)
 
         self.num_observations = 3 * 12 + 3 * 3 + 1 + 4  # joint(pos + vel + torques) + body(orientation + linear vel + ang vel) + height + foot_contact
         self.max_episode_length = 20
         self.action_scale = 1
-        self.control_mode = 'JointTorque'  # Modes: 'JointTorque','PDJoint', 'PDCartesian'
+        self.control_mode = 'PDJoint'  # Modes: 'JointTorque','PDJoint', 'PDCartesian'
         if self.control_mode == 'JointTorque':
             self.num_actions = 12  # num of DOF
         if self.control_mode == 'PDJoint':
@@ -69,6 +69,7 @@ class QuadrupedEnvironment(gym.Env):
                                  self.temp_config.init_position,
                                  self.temp_config.init_orientation,
                                  self.temp_config.init_joints,
+                                 self.temp_config.torque_limits,
                                  joint_stiffness=self.temp_config.joint_stiffness,
                                  joint_damping=self.temp_config.joint_damping)
         self.action_space = spaces.Box(np.array([-self.temp_config.action_clip] * self.temp_config.num_actions),
@@ -98,7 +99,6 @@ class QuadrupedEnvironment(gym.Env):
 
         self.a1.load_urdf(self.temp_config.a1_urdf)
         self.a1.load_init_pose()
-        # TODO set initial state
 
         # Getting the observation & info
         observation = self.a1.get_observation()
@@ -113,8 +113,8 @@ class QuadrupedEnvironment(gym.Env):
         self.pybullet_client.configureDebugVisualizer(p.COV_ENABLE_SINGLE_STEP_RENDERING)
 
         # Step simulation
-        self.pybullet_client.stepSimulation()
         self.apply_action(action)
+        self.pybullet_client.stepSimulation()
 
         # Get the observation & info
         observation = self.a1.get_observation()
@@ -137,6 +137,14 @@ class QuadrupedEnvironment(gym.Env):
             command = action * self.temp_config.torque_limits
             command *= self.temp_config.action_scale
             # command = np.clip(command, -self.temp_config.torque_limits, self.temp_config.torque_limits)
+            self.a1.apply_torques(command)
+        elif self.temp_config.control_mode == 'PDJoint':
+            target = self.temp_config.lower_joint_limit + 0.5 * (action + 1.0) * \
+                      (self.temp_config.upper_joint_limit - self.temp_config.lower_joint_limit)
+            command = self.temp_config.joint_pd_kp * (target - self.a1.get_joint_position()) \
+                      - self.temp_config.joint_pd_kd * self.a1.get_joint_velocities()
+            command *= self.temp_config.action_scale
+            command = np.clip(command, -self.temp_config.torque_limits, self.temp_config.torque_limits)
             self.a1.apply_torques(command)
 
     def render(self, mode='human'):
