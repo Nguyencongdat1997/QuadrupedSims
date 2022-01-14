@@ -24,41 +24,25 @@ class Config():
         self.num_observations = 3 * 12 + 3 * 3 + 1 + 4  # joint(pos + vel + torques) + body(orientation + linear vel + ang vel) + height + foot_contact
         self.max_episode_length = 20
         self.action_scale = 0.5
-        self.control_mode = 'PDJoint'  # Modes: 'PDJoint', 'PDCartesian'
+        self.control_mode = 'JointTorque'  # Modes: 'JointTorque','PDJoint', 'PDCartesian'
+        if self.control_mode == 'JointTorque':
+            self.num_actions = 12  # num of DOF
         if self.control_mode == 'PDJoint':
             self.num_actions = 12  # num of DOF
         elif self.control_mode == 'PDCartesian':
             self.num_actions = 12  # x,y,z * 4
         self.action_clip = 1.0
         self.observation_clip = 50.0
+        self.joint_pd_kp = np.array([30.0, 30.0, 30.0] * 4)
+        self.joint_pd_kd = np.array([0.5, 0.5, 0.5] * 4)
 
         self.start_pose = [0, 0, 0.38, 0, 0, 0, 1]
-        self.named_default_joint_angles = {
-            'FL_hip_joint': 0.0, 'FR_hip_joint': 0.0, 'RL_hip_joint': 0.0, 'RR_hip_joint': 0.0,
-            'FL_thigh_joint': np.pi / 4 - 0.15, 'FR_thigh_joint': np.pi / 4 - 0.15, 'RL_thigh_joint': np.pi / 4 - 0.15,
-            'RR_thigh_joint': np.pi / 4 - 0.15,
-            'FL_calf_joint': -np.pi / 2, 'FR_calf_joint': -np.pi / 2, 'RL_calf_joint': -np.pi / 2,
-            'RR_calf_joint': -np.pi / 2,
-        }
-        self.named_upper_joint_limit = {
-            'FL_hip_joint': 0.4, 'FR_hip_joint': 0.4, 'RL_hip_joint': 0.4, 'RR_hip_joint': 0.4,
-            'FL_thigh_joint': np.pi / 4 + 2.5, 'FR_thigh_joint': np.pi / 4 + 2.5, 'RL_thigh_joint': np.pi / 4 + 2.5,
-            'RR_thigh_joint': np.pi / 4 + 2.5,
-            'FL_calf_joint': -np.pi / 2 + 0.6, 'FR_calf_joint': -np.pi / 2 + 0.6, 'RL_calf_joint': -np.pi / 2 + 0.6,
-            'RR_calf_joint': -np.pi / 2 + 0.6,
-        }
-        self.named_lower_joint_limit = {
-            'FL_hip_joint': -0.4, 'FR_hip_joint': -0.4, 'RL_hip_joint': -0.4, 'RR_hip_joint': -0.4,
-            'FL_thigh_joint': np.pi / 4 - 2.5, 'FR_thigh_joint': np.pi / 4 - 2.5, 'RL_thigh_joint': np.pi / 4 - 2.5,
-            'RR_thigh_joint': np.pi / 4 - 2.5,
-            'FL_calf_joint': -np.pi / 2 - 1, 'FR_calf_joint': -np.pi / 2 - 1, 'RL_calf_joint': -np.pi / 2 - 1,
-            'RR_calf_joint': -np.pi / 2 - 1,
-        }
+        self.init_joints = np.array([0.0, np.pi/4-0.15, -np.pi/2] * 4) # hip -> thigh -> calf, FR -> FL -> RR- > RL
+        self.upper_joint_limit = np.array([0.802851455917, 4.18879020479, -0.916297857297] * 4)
+        self.lower_joint_limit = np.array([-0.802851455917, -1.0471975512, -2.69653369433] * 4)
         self.torque_limits = np.array([33.5, 33.5, 33.5]*4)
-        self.kp = np.array([30.0, 30.0, 30.0] * 4)
-        self.kd = np.array([0.5, 0.5, 0.5] * 4)
-        self.dof_stiffness = 30
-        self.dof_damping = 2
+        self.joint_stiffness = np.array([30.0, 30.0, 30.0] * 4)
+        self.joint_damping = np.array([2.0, 2.0, 2.0] * 4)
 
 
 class QuadrupedEnvironment(gym.Env):
@@ -81,8 +65,8 @@ class QuadrupedEnvironment(gym.Env):
         self.a1 = QuadrupedRobot(self.pybullet_client,
                                  self.temp_config.init_position,
                                  self.temp_config.init_orientation,
-                                 kp=self.temp_config.kp,
-                                 kd=self.temp_config.kd)
+                                 joint_stiffness=self.temp_config.joint_stiffness,
+                                 joint_damping=self.temp_config.joint_damping)
         self.action_space = spaces.Box(np.array([-self.temp_config.action_clip] * self.temp_config.num_actions),
                                        np.array([self.temp_config.action_clip] * self.temp_config.num_actions))
         self.observation_space = spaces.Box(np.array([-self.temp_config.observation_clip] * self.temp_config.num_observations),
@@ -142,7 +126,7 @@ class QuadrupedEnvironment(gym.Env):
 
     def apply_action(self, action):
         action = np.clip(action, -1,  1)
-        if self.temp_config.control_mode == 'PDJoint':
+        if self.temp_config.control_mode == 'JointTorque':
             command = action * self.temp_config.torque_limits
             command *= self.temp_config.action_scale
             command = np.clip(command, -self.temp_config.torque_limits, self.temp_config.torque_limits)

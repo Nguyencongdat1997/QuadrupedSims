@@ -5,7 +5,7 @@ import re
 
 class QuadrupedRobot(object):
     def __init__(self, pybullet_client, init_position, init_orientation,
-                 kp=np.array([30.0, 30.0, 30.0] * 4), kd=np.array([0.5, 0.5, 0.5] * 4)):
+                 joint_stiffness=np.array([30.0, 30.0, 30.0] * 4), joint_damping=np.array([0.5, 0.5, 0.5] * 4)):
         self.pybullet_client = pybullet_client
 
         self.init_position = init_position
@@ -13,8 +13,8 @@ class QuadrupedRobot(object):
         _, self.init_orientation_inv = p.invertTransform(position=[0, 0, 0], orientation=init_orientation)
         self.joint_directions = np.array([1, 1, 1, 1, 1, 1,
                                           1, 1, 1, 1, 1, 1])
-        self.kp = kp
-        self.kd = kd
+        self.joint_stiffness = joint_stiffness
+        self.joint_damping = joint_damping
 
         self.naming_pattern = {'base_link': re.compile(r'\w*floating_base\w*'),
                                'hip_joint': re.compile(r'\w+_hip_joint\w*'),
@@ -125,6 +125,4 @@ class QuadrupedRobot(object):
             self.pybullet_client.setJointMotorControl2(bodyIndex=self.uid,
                                                        jointIndex=self.joint_ids[i],
                                                        controlMode=self.pybullet_client.TORQUE_CONTROL,
-                                                       force=command[i],
-                                                       positionGain=self.kp[i],
-                                                       velocityGain=self.kd[i])
+                                                       force=command[i])
