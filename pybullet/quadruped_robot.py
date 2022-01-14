@@ -4,7 +4,8 @@ import re
 
 
 class QuadrupedRobot(object):
-    def __init__(self, pybullet_client, init_position, init_orientation):
+    def __init__(self, pybullet_client, init_position, init_orientation,
+                 kp=np.array([30.0, 30.0, 30.0] * 4), kd=np.array([0.5, 0.5, 0.5] * 4)):
         self.pybullet_client = pybullet_client
 
         self.init_position = init_position
@@ -12,11 +13,13 @@ class QuadrupedRobot(object):
         _, self.init_orientation_inv = p.invertTransform(position=[0, 0, 0], orientation=init_orientation)
         self.joint_directions = np.array([1, 1, 1, 1, 1, 1,
                                           1, 1, 1, 1, 1, 1])
+        self.kp = kp
+        self.kd = kd
 
         self.naming_pattern = {'base_link': re.compile(r'\w*floating_base\w*'),
-                               'hip_joint': re.compile(r'\w+_hip_j\w+'),
-                               'calf_joint': re.compile(r'\w+_calf_j\w+'),
-                               'thigh_joint': re.compile(r'\w+_thigh_j\w+'),
+                               'hip_joint': re.compile(r'\w+_hip_joint\w*'),
+                               'calf_joint': re.compile(r'\w+_calf_joint\w*'),
+                               'thigh_joint': re.compile(r'\w+_thigh_joint\w*'),
                                'foot_link': re.compile(r'\w+_foot_\w+')}
 
     def load_urdf(self, urdf_file):
@@ -114,3 +117,14 @@ class QuadrupedRobot(object):
     def get_foot_contact(self):
         return [1, 2, 3, 4]
         # TODO
+
+    def apply_torques(self, command):
+        if len(command) != len(self.joint_ids):
+            raise ValueError('Invalid shape of torque command and joints')
+        for i in range(len(self.joint_ids)):
+            self.pybullet_client.setJointMotorControl2(bodyIndex=self.uid,
+                                                       jointIndex=self.joint_ids[i],
+                                                       controlMode=self.pybullet_client.TORQUE_CONTROL,
+                                                       force=command[i],
+                                                       positionGain=self.kp[i],
+                                                       velocityGain=self.kd[i])

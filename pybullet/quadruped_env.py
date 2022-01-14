@@ -23,8 +23,8 @@ class Config():
 
         self.num_observations = 3 * 12 + 3 * 3 + 1 + 4  # joint(pos + vel + torques) + body(orientation + linear vel + ang vel) + height + foot_contact
         self.max_episode_length = 20
-        self.action_scale = 1
-        self.control_mode = 'PDCartesian'  # Modes: 'PDJoint', 'PDCartesian'
+        self.action_scale = 0.5
+        self.control_mode = 'PDJoint'  # Modes: 'PDJoint', 'PDCartesian'
         if self.control_mode == 'PDJoint':
             self.num_actions = 12  # num of DOF
         elif self.control_mode == 'PDCartesian':
@@ -55,8 +55,8 @@ class Config():
             'RR_calf_joint': -np.pi / 2 - 1,
         }
         self.torque_limits = np.array([33.5, 33.5, 33.5]*4)
-        self.Kp = np.array([30.0, 30.0, 30.0] * 4)
-        self.Kd = np.array([0.5, 0.5, 0.5] * 4)
+        self.kp = np.array([30.0, 30.0, 30.0] * 4)
+        self.kd = np.array([0.5, 0.5, 0.5] * 4)
         self.dof_stiffness = 30
         self.dof_damping = 2
 
@@ -80,7 +80,9 @@ class QuadrupedEnvironment(gym.Env):
         # Set up environment specifications
         self.a1 = QuadrupedRobot(self.pybullet_client,
                                  self.temp_config.init_position,
-                                 self.temp_config.init_orientation)
+                                 self.temp_config.init_orientation,
+                                 kp=self.temp_config.kp,
+                                 kd=self.temp_config.kd)
         self.action_space = spaces.Box(np.array([-self.temp_config.action_clip] * self.temp_config.num_actions),
                                        np.array([self.temp_config.action_clip] * self.temp_config.num_actions))
         self.observation_space = spaces.Box(np.array([-self.temp_config.observation_clip] * self.temp_config.num_observations),
@@ -121,6 +123,7 @@ class QuadrupedEnvironment(gym.Env):
 
         # Step simulation
         self.pybullet_client.stepSimulation()
+        self.apply_action(action)
 
         # Get the observation & info
         observation = self.a1.get_observation()
@@ -136,6 +139,14 @@ class QuadrupedEnvironment(gym.Env):
         
         # Return
         return observation, reward, done, info
+
+    def apply_action(self, action):
+        action = np.clip(action, -1,  1)
+        if self.temp_config.control_mode == 'PDJoint':
+            command = action * self.temp_config.torque_limits
+            command *= self.temp_config.action_scale
+            command = np.clip(command, -self.temp_config.torque_limits, self.temp_config.torque_limits)
+            self.a1.apply_torques(command)
     
     def render(self, mode='human'):
         view_matrix = self.pybullet_client.computeViewMatrixFromYawPitchRoll(
