@@ -4,13 +4,14 @@ import re
 
 
 class QuadrupedRobot(object):
-    def __init__(self, pybullet_client, init_position, init_orientation,
+    def __init__(self, pybullet_client, init_position, init_orientation, init_joints,
                  joint_stiffness=np.array([30.0, 30.0, 30.0] * 4), joint_damping=np.array([0.5, 0.5, 0.5] * 4)):
         self.pybullet_client = pybullet_client
 
         self.init_position = init_position
         self.init_orientation = init_orientation
         _, self.init_orientation_inv = p.invertTransform(position=[0, 0, 0], orientation=init_orientation)
+        self.init_joints = init_joints
         self.joint_directions = np.array([1, 1, 1, 1, 1, 1,
                                           1, 1, 1, 1, 1, 1])
         self.joint_stiffness = joint_stiffness
@@ -23,7 +24,7 @@ class QuadrupedRobot(object):
                                'foot_link': re.compile(r'\w+_foot_\w+')}
 
     def load_urdf(self, urdf_file):
-        self.uid = p.loadURDF(urdf_file, useFixedBase=False)
+        self.uid = p.loadURDF(urdf_file, useFixedBase=False, basePosition=self.init_position)
         self.load_joint_ids()
 
     def load_joint_ids(self):
@@ -65,6 +66,13 @@ class QuadrupedRobot(object):
         self.calf_joint_ids.sort()
         self.foot_link_ids.sort()
 
+    def load_init_pose(self):
+        for i in range(len(self.joint_ids)):
+            self.pybullet_client.resetJointState(self.uid,
+                                                 self.joint_ids[i],
+                                                 targetValue=self.init_joints[i],
+                                                 targetVelocity=0)
+
     def get_observation(self):
         # TODO: reformat merging function, not divide functions to save processing time
         observation = []
@@ -72,8 +80,8 @@ class QuadrupedRobot(object):
         observation.extend(self.get_joint_velocities().tolist())
         observation.extend(self.get_joint_torqes().tolist())
         observation.extend(list(self.get_body_orientation()))
-        observation.extend(self.get_body_linear_velocity().tolist())
-        observation.extend(self.get_body_angular_velocity().tolist())
+        observation.extend(self.get_body_linear_velocity())
+        observation.extend(self.get_body_angular_velocity())
         observation.extend(self.get_body_height())
         observation.extend(self.get_foot_contact())
         return observation

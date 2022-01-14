@@ -16,14 +16,15 @@ class Config():
             TODO: Move these config to yaml files
         '''
         self.is_render = True
+        self.dt = 1
 
         self.a1_urdf = './asset/urdfs/a1_description/urdf/a1.urdf'
         self.init_orientation = (0, 0, 0, 1)
-        self.init_position = (0, 0, 0)
+        self.init_position = (0, 0, 0.385)
 
         self.num_observations = 3 * 12 + 3 * 3 + 1 + 4  # joint(pos + vel + torques) + body(orientation + linear vel + ang vel) + height + foot_contact
         self.max_episode_length = 20
-        self.action_scale = 0.5
+        self.action_scale = 1
         self.control_mode = 'JointTorque'  # Modes: 'JointTorque','PDJoint', 'PDCartesian'
         if self.control_mode == 'JointTorque':
             self.num_actions = 12  # num of DOF
@@ -56,15 +57,18 @@ class QuadrupedEnvironment(gym.Env):
         # Connect to Pybullet
         if self.temp_config.is_render:
             self.pybullet_client = bc.BulletClient(connection_mode=p.GUI)
-            p.setTimeStep(1/50)
+            self.pybullet_client.setTimeStep(1/50)
+            self.pybullet_client.configureDebugVisualizer(self.pybullet_client.COV_ENABLE_PLANAR_REFLECTION, 0)
         else:
             self.pybullet_client = bc.BulletClient()
+            self.pybullet_client.setTimeStep(self.temp_config.dt)
         self.pybullet_client.setAdditionalSearchPath(pybullet_data.getDataPath())
 
         # Set up environment specifications
         self.a1 = QuadrupedRobot(self.pybullet_client,
                                  self.temp_config.init_position,
                                  self.temp_config.init_orientation,
+                                 self.temp_config.init_joints,
                                  joint_stiffness=self.temp_config.joint_stiffness,
                                  joint_damping=self.temp_config.joint_damping)
         self.action_space = spaces.Box(np.array([-self.temp_config.action_clip] * self.temp_config.num_actions),
@@ -88,9 +92,12 @@ class QuadrupedEnvironment(gym.Env):
         self.pybullet_client.setGravity(0, 0, -10)
 
         # Load objects
-        plane_uid = self.pybullet_client.loadURDF("plane.urdf", basePosition=[0,0,-0.65])
+        plane_uid = self.pybullet_client.loadURDF("plane.urdf", basePosition=[0,0,0])
+        if self.temp_config.is_render:
+            self.pybullet_client.changeVisualShape(plane_uid, -1, rgbaColor=[1, 1, 1, 0.9])
 
         self.a1.load_urdf(self.temp_config.a1_urdf)
+        self.a1.load_init_pose()
         # TODO set initial state
 
         # Getting the observation & info
@@ -129,9 +136,9 @@ class QuadrupedEnvironment(gym.Env):
         if self.temp_config.control_mode == 'JointTorque':
             command = action * self.temp_config.torque_limits
             command *= self.temp_config.action_scale
-            command = np.clip(command, -self.temp_config.torque_limits, self.temp_config.torque_limits)
+            # command = np.clip(command, -self.temp_config.torque_limits, self.temp_config.torque_limits)
             self.a1.apply_torques(command)
-    
+
     def render(self, mode='human'):
         view_matrix = self.pybullet_client.computeViewMatrixFromYawPitchRoll(
                             cameraTargetPosition=[0.7,0,0.05],
