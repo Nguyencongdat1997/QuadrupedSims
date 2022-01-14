@@ -74,7 +74,7 @@ class QuadrupedRobot(object):
                 jointIndex=self.joint_ids[i],
                 controlMode=self.pybullet_client.VELOCITY_CONTROL,
                 targetVelocity=0,
-                force=self.torque_limits[i]) # Note: This seem to be required before resetting joint state
+                force=self.torque_limits[i])  # Note: This seem to be required before resetting joint state
             self.pybullet_client.resetJointState(self.uid,
                                                  self.joint_ids[i],
                                                  targetValue=self.init_joints[i],
@@ -129,9 +129,23 @@ class QuadrupedRobot(object):
         body_position, _ = (self.pybullet_client.getBasePositionAndOrientation(self.uid))
         return [body_position[2]]
 
+    def get_body_position(self):
+        body_position, _ = (self.pybullet_client.getBasePositionAndOrientation(self.uid))
+        return body_position
+
     def get_foot_contact(self):
         return [1, 2, 3, 4]
         # TODO
+
+    def is_fallen_on(self, plane_uid):
+        contact_points = self.pybullet_client.getContactPoints(self.uid, plane_uid)
+        for c in contact_points:
+            if (c[3] in self.thigh_joint_ids or c[4] in self.thigh_joint_ids or \
+                    c[3] in self.body_link_id or c[4] in self.body_link_id) and \
+                    abs(c[8]) <0.001:  # contact-distance < 0.05
+                print('Contact focesss', c)
+                return True
+        return False
 
     def apply_torques(self, command):
         if len(command) != len(self.joint_ids):

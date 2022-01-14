@@ -16,14 +16,18 @@ class Config():
             TODO: Move these config to yaml files
         '''
         self.is_render = True
-        self.dt = 1
+        if self.is_render:
+            self.dt = 1/50
+        else:
+            self.dt = 1
 
         self.a1_urdf = './asset/urdfs/a1_description/urdf/a1.urdf'
         self.init_orientation = (0, 0, 0, 1)
         self.init_position = (0, 0, 0.38)
 
         self.num_observations = 3 * 12 + 3 * 3 + 1 + 4  # joint(pos + vel + torques) + body(orientation + linear vel + ang vel) + height + foot_contact
-        self.max_episode_length = 20
+        self.max_episode_length = 300
+        self.max_distance = 20
         self.action_scale = 1
         self.control_mode = 'PDJoint'  # Modes: 'JointTorque','PDJoint', 'PDCartesian'
         if self.control_mode == 'JointTorque':
@@ -51,17 +55,15 @@ class QuadrupedEnvironment(gym.Env):
     def __init__(self):
         # Load parameters configuration
         self.temp_config = Config()
-        self.max_steps = 100
         self.run_steps = 0
 
         # Connect to Pybullet
         if self.temp_config.is_render:
             self.pybullet_client = bc.BulletClient(connection_mode=p.GUI)
-            self.pybullet_client.setTimeStep(1/50)
             self.pybullet_client.configureDebugVisualizer(self.pybullet_client.COV_ENABLE_PLANAR_REFLECTION, 0)
         else:
             self.pybullet_client = bc.BulletClient()
-            self.pybullet_client.setTimeStep(self.temp_config.dt)
+        self.pybullet_client.setTimeStep(self.temp_config.dt)
         self.pybullet_client.setAdditionalSearchPath(pybullet_data.getDataPath())
 
         # Set up environment specifications
@@ -93,12 +95,13 @@ class QuadrupedEnvironment(gym.Env):
         self.pybullet_client.setGravity(0, 0, -10)
 
         # Load objects
-        plane_uid = self.pybullet_client.loadURDF("plane.urdf", basePosition=[0,0,0])
+        self.plane_uid = self.pybullet_client.loadURDF("plane.urdf", basePosition=[0,0,0])
         if self.temp_config.is_render:
-            self.pybullet_client.changeVisualShape(plane_uid, -1, rgbaColor=[1, 1, 1, 0.9])
+            self.pybullet_client.changeVisualShape(self.plane_uid, -1, rgbaColor=[1, 1, 1, 0.9])
 
         self.a1.load_urdf(self.temp_config.a1_urdf)
         self.a1.load_init_pose()
+        self.last_body_position = self.a1.get_body_position()
 
         # Getting the observation & info
         observation = self.a1.get_observation()
@@ -121,13 +124,10 @@ class QuadrupedEnvironment(gym.Env):
         info = 'None'
 
         # Get reward & done
-        if self.run_steps > self.max_steps:
-            reward = 0
-            done = True
-        else:
-            reward = 0
-            done = False
-        
+        reward, done = 0, True
+        if self.run_steps <= self.temp_config.max_episode_length:
+            reward, done = self.get_reward_and_done()
+
         # Return
         return observation, reward, done, info
 
@@ -146,6 +146,27 @@ class QuadrupedEnvironment(gym.Env):
             command *= self.temp_config.action_scale
             command = np.clip(command, -self.temp_config.torque_limits, self.temp_config.torque_limits)
             self.a1.apply_torques(command)
+
+    def get_reward_and_done(self, distance_weight=5.0, energy_weight=0.1, drift_weight=0.1, shake_weight=0.1):
+        '''
+            Reward of moving forward
+        '''
+        current_body_position = self.a1.get_body_position()
+
+        moved_distance = np.sqrt(current_body_position[0] ** 2 + current_body_position[1] ** 2)
+        done = self.run_steps > self.temp_config.max_episode_length
+        done |= (moved_distance > self.temp_config.max_distance)
+        done |= self.a1.is_fallen_on(self.plane_uid)
+
+        forward_reward = current_body_position[0] - self.last_body_position[0]
+        drift_reward = -abs(current_body_position[1] - self.last_body_position[1])
+        shake_reward = -abs(current_body_position[2] - self.last_body_position[2])
+        energy_reward = -np.abs(np.dot(self.a1.get_joint_torqes(),self.a1.get_joint_velocities())) * self.temp_config.dt
+        reward = (distance_weight * forward_reward + energy_weight * energy_reward +
+                  drift_weight * drift_reward + shake_weight * shake_reward)
+
+        self.last_base_position = current_body_position
+        return reward, done
 
     def render(self, mode='human'):
         view_matrix = self.pybullet_client.computeViewMatrixFromYawPitchRoll(
@@ -172,6 +193,6 @@ class QuadrupedEnvironment(gym.Env):
 
         rgb_array = rgb_array[:, :, :3]
         return rgb_array
-        
+
     def close(self):
         self.pybullet_client.disconnect()
