@@ -17,7 +17,7 @@ class Config():
         '''
         self.is_render = True
         if self.is_render:
-            self.dt = 1/50
+            self.dt = 1/100
         else:
             self.dt = 1
 
@@ -26,10 +26,10 @@ class Config():
         self.init_position = (0, 0, 0.38)
 
         self.num_observations = 3 * 12 + 3 * 3 + 1 + 4  # joint(pos + vel + torques) + body(orientation + linear vel + ang vel) + height + foot_contact
-        self.max_episode_length = 300
+        self.max_episode_length = 30000
         self.max_distance = 20
         self.action_scale = 1
-        self.control_mode = 'PDJoint'  # Modes: 'JointTorque','PDJoint', 'PDCartesian'
+        self.control_mode = 'JointTorque'  # Modes: 'JointTorque','PDJoint', 'PDCartesian'
         if self.control_mode == 'JointTorque':
             self.num_actions = 12  # num of DOF
         if self.control_mode == 'PDJoint':

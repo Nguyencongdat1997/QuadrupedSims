@@ -25,7 +25,7 @@ class QuadrupedRobot(object):
                                'foot_link': re.compile(r'\w+_foot_\w+')}
 
     def load_urdf(self, urdf_file):
-        self.uid = p.loadURDF(urdf_file, useFixedBase=False, basePosition=self.init_position)
+        self.uid = self.pybullet_client.loadURDF(urdf_file, useFixedBase=False, basePosition=self.init_position)
         self.load_joint_ids()
 
     def load_joint_ids(self):
